@@ -30,24 +30,31 @@ async function main() {
     await AppDataSource.initialize();
     console.log('Database connection initialized successfully');
 
-    // Clear existing data
+    // Clear existing data efficiently
     console.log('Clearing existing data...');
-    await AppDataSource.getRepository(Task).delete({});
-    console.log('Tasks cleared');
-    await AppDataSource.getRepository(User).delete({});
-    console.log('Users cleared');
+    await AppDataSource.query('TRUNCATE TABLE tasks RESTART IDENTITY CASCADE');
+    await AppDataSource.query('TRUNCATE TABLE users RESTART IDENTITY CASCADE');
+    console.log('Data cleared efficiently');
 
-    // Seed users
+    // Seed users using bulk insert
     console.log('Seeding users...');
     console.log('Users to seed:', users.length);
-    const savedUsers = await AppDataSource.getRepository(User).save(users);
-    console.log('Users seeded successfully:', savedUsers.length);
+    await AppDataSource.createQueryBuilder()
+      .insert()
+      .into(User)
+      .values(users)
+      .execute();
+    console.log('Users seeded successfully with bulk insert');
 
-    // Seed tasks
+    // Seed tasks using bulk insert
     console.log('Seeding tasks...');
     console.log('Tasks to seed:', tasks.length);
-    const savedTasks = await AppDataSource.getRepository(Task).save(tasks);
-    console.log('Tasks seeded successfully:', savedTasks.length);
+    await AppDataSource.createQueryBuilder()
+      .insert()
+      .into(Task)
+      .values(tasks)
+      .execute();
+    console.log('Tasks seeded successfully with bulk insert');
 
     console.log('Database seeding completed successfully');
     process.exit(0);

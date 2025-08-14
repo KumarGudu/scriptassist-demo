@@ -18,31 +18,35 @@ export class OverdueTasksService {
     private tasksRepository: Repository<Task>,
   ) {}
 
-  // TODO: Implement the overdue tasks checker
-  // This method should run every hour and check for overdue tasks
   @Cron(CronExpression.EVERY_HOUR)
   async checkOverdueTasks() {
     this.logger.debug('Checking for overdue tasks...');
     
-    // TODO: Implement overdue tasks checking logic
-    // 1. Find all tasks that are overdue (due date is in the past)
-    // 2. Add them to the task processing queue
-    // 3. Log the number of overdue tasks found
-    
-    // Example implementation (incomplete - to be implemented by candidates)
-    const now = new Date();
-    const overdueTasks = await this.tasksRepository.find({
-      where: {
-        dueDate: LessThan(now),
-        status: TaskStatus.PENDING,
-      },
-    });
-    
-    this.logger.log(`Found ${overdueTasks.length} overdue tasks`);
-    
-    // Add tasks to the queue to be processed
-    // TODO: Implement adding tasks to the queue
-    
-    this.logger.debug('Overdue tasks check completed');
-  }
+    try {
+      const now = new Date();
+      
+      // Efficient query to get only task IDs for overdue tasks
+      const overdueTaskIds = await this.tasksRepository
+        .createQueryBuilder('task')
+        .select('task.id')
+        .where('task.dueDate < :now', { now })
+        .andWhere('task.status = :status', { status: TaskStatus.PENDING })
+        .getMany();
+      
+      this.logger.log(`Found ${overdueTaskIds.length} overdue tasks`);
+      
+      if (overdueTaskIds.length > 0) {
+        // Bulk add tasks to queue efficiently
+        const queueJobs = overdueTaskIds.map(task => ({
+          name: 'overdue-task-notification',
+          data: {
+            taskId: task.id,
+            processedAt: now.toISOString(),
+          },
+          opts: {
+            delay: 0,
+            attempts: 3,
+            backoff: 'exponential',
+          },
+        }));\n\n        await this.taskQueue.addBulk(queueJobs);\n        this.logger.log(`Added ${overdueTaskIds.length} tasks to processing queue`);\n      }\n      \n      this.logger.debug('Overdue tasks check completed successfully');\n    } catch (error) {\n      this.logger.error('Error checking overdue tasks:', error);\n      throw error;\n    }\n  }
 } 

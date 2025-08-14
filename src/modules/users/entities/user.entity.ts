@@ -1,8 +1,10 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Task } from '../../tasks/entities/task.entity';
 import { Exclude } from 'class-transformer';
 
 @Entity('users')
+@Index('idx_user_email', ['email'])
+@Index('idx_user_role', ['role'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -20,7 +22,10 @@ export class User {
   @Column({ default: 'user' })
   role: string;
 
-  @OneToMany('Task', (task: any) => task.user)
+  @OneToMany(() => Task, (task) => task.user, {
+    lazy: true,
+    cascade: true,
+  })
   tasks: Task[];
 
   @CreateDateColumn({ name: 'created_at' })
