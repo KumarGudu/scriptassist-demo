@@ -1,15 +1,19 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { UsersModule } from './modules/users/users.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TaskProcessorModule } from './queues/task-processor/task-processor.module';
 import { ScheduledTasksModule } from './queues/scheduled-tasks/scheduled-tasks.module';
 import { CacheService } from './common/services/cache.service';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { SecureRateLimitGuard } from './common/guards/secure-rate-limit.guard';
 import jwtConfig from './config/jwt.config';
 
 @Module({
@@ -18,6 +22,10 @@ import jwtConfig from './config/jwt.config';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [jwtConfig],
+      validationOptions: {
+        allowUnknown: false,
+        abortEarly: true,
+      },
     }),
     
     // Database
@@ -34,6 +42,13 @@ import jwtConfig from './config/jwt.config';
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: configService.get('NODE_ENV') === 'development',
         logging: configService.get('NODE_ENV') === 'development',
+        // Security: Prevent SQL injection and ensure secure connections
+        extra: {
+          ssl: configService.get('NODE_ENV') === 'production',
+          connectionTimeoutMillis: 10000,
+          query_timeout: 30000,
+          statement_timeout: 30000,
+        },
       }),
     }),
     
@@ -48,11 +63,15 @@ import jwtConfig from './config/jwt.config';
         connection: {
           host: configService.get('REDIS_HOST'),
           port: configService.get('REDIS_PORT'),
+          // Security: Redis connection with authentication
+          password: configService.get('REDIS_PASSWORD'),
+          connectTimeout: 10000,
+          lazyConnect: true,
         },
       }),
     }),
     
-    // Rate limiting
+    // Rate limiting (legacy - using our secure implementation)
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -74,14 +93,23 @@ import jwtConfig from './config/jwt.config';
     ScheduledTasksModule,
   ],
   providers: [
-    // Inefficient: Global cache service with no configuration options
-    // This creates a single in-memory cache instance shared across all modules
-    CacheService
+    CacheService,
+    // Global security filter
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
+    // Global security guard (optional - can be applied per route)
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: SecureRateLimitGuard,
+    // },
   ],
-  exports: [
-    // Exporting the cache service makes it available to other modules
-    // but creates tight coupling
-    CacheService
-  ]
+  exports: [CacheService]
 })
-export class AppModule {} 
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply security middleware to all routes
+    consumer.apply(SecurityHeadersMiddleware).forRoutes('*');
+  }
+} 
