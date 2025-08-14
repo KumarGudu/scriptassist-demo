@@ -34,7 +34,7 @@ export class Task {
   @Column({ name: 'user_id' })
   userId: string;
 
-  @ManyToOne('User', (user) => user.tasks)
+  @ManyToOne('User', (user: any) => user.tasks)
   @JoinColumn({ name: 'user_id' })
   user: User;
 

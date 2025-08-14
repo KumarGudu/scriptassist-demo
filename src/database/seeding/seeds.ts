@@ -23,30 +23,46 @@ const AppDataSource = new DataSource({
 // Initialize and seed database
 async function main() {
   try {
+    console.log('Starting database seeding process...');
+    
     // Initialize connection
+    console.log('Initializing database connection...');
     await AppDataSource.initialize();
-    console.log('Database connection initialized');
+    console.log('Database connection initialized successfully');
 
     // Clear existing data
+    console.log('Clearing existing data...');
     await AppDataSource.getRepository(Task).delete({});
+    console.log('Tasks cleared');
     await AppDataSource.getRepository(User).delete({});
-    console.log('Existing data cleared');
+    console.log('Users cleared');
 
     // Seed users
-    await AppDataSource.getRepository(User).save(users);
-    console.log('Users seeded successfully');
+    console.log('Seeding users...');
+    console.log('Users to seed:', users.length);
+    const savedUsers = await AppDataSource.getRepository(User).save(users);
+    console.log('Users seeded successfully:', savedUsers.length);
 
     // Seed tasks
-    await AppDataSource.getRepository(Task).save(tasks);
-    console.log('Tasks seeded successfully');
+    console.log('Seeding tasks...');
+    console.log('Tasks to seed:', tasks.length);
+    const savedTasks = await AppDataSource.getRepository(Task).save(tasks);
+    console.log('Tasks seeded successfully:', savedTasks.length);
 
-    console.log('Database seeding completed');
+    console.log('Database seeding completed successfully');
+    process.exit(0);
   } catch (error) {
     console.error('Error during database seeding:', error);
+    console.error('Error stack:', (error as any).stack);
+    process.exit(1);
   } finally {
     // Close connection
-    await AppDataSource.destroy();
-    console.log('Database connection closed');
+    try {
+      await AppDataSource.destroy();
+      console.log('Database connection closed');
+    } catch (closeError) {
+      console.error('Error closing database connection:', closeError);
+    }
   }
 }
 

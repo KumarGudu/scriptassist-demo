@@ -25,7 +25,7 @@
     "migration:show": "npm run typeorm -- migration:show",
     "migration:create": "typeorm migration:create src/database/migrations/Migration",
     "migration:custom": "ts-node src/database/run-migrations.ts",
-    "seed": "ts-node src/database/seeding/seeds.ts"
+    "seed": "npm run build && node dist/src/database/seeding/seeds.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "10.2.3",
