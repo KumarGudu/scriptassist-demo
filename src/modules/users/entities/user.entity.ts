@@ -5,6 +5,10 @@ import { Exclude } from 'class-transformer';
 @Entity('users')
 @Index('idx_user_email', ['email'])
 @Index('idx_user_role', ['role'])
+@Index('idx_user_created_at', ['createdAt'])
+@Index('idx_user_name', ['name'])
+@Index('idx_user_email_role', ['email', 'role'])
+@Index('idx_user_role_created', ['role', 'createdAt'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
