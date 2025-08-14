@@ -1,11 +1,11 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, HttpException, HttpStatus } from '@nestjs/common';
-import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TaskStatus } from './enums/task-status.enum';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
+import { ITaskService } from './interfaces/task.service.interface';
 
 // This guard needs to be implemented or imported from the correct location
 // We're intentionally leaving it as a non-working placeholder
@@ -18,7 +18,7 @@ class JwtAuthGuard {}
 @ApiBearerAuth()
 export class TasksController {
   constructor(
-    private readonly tasksService: TasksService,
+    private readonly tasksService: ITaskService,
   ) {}
 
   @Post()
@@ -88,26 +88,24 @@ export class TasksController {
 
   @Post('batch')
   @ApiOperation({ summary: 'Batch process multiple tasks' })
-  async batchProcess(@Body() operations: { tasks: string[], action: string }) {
+  async batchProcess(@Body() operations: { tasks: string[], action: 'complete' | 'delete' }) {
     const { tasks: taskIds, action } = operations;
     
     if (!taskIds || taskIds.length === 0) {
       throw new HttpException('No task IDs provided', HttpStatus.BAD_REQUEST);
     }
 
+    if (!['complete', 'delete'].includes(action)) {
+      throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
+    }
+
     try {
-      switch (action) {
-        case 'complete':
-          await this.tasksService.bulkUpdate(taskIds, { status: TaskStatus.COMPLETED });
-          return { success: true, processed: taskIds.length, action: 'completed' };
-          
-        case 'delete':
-          await this.tasksService.bulkDelete(taskIds);
-          return { success: true, processed: taskIds.length, action: 'deleted' };
-          
-        default:
-          throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
-      }
+      await this.tasksService.processBatchOperation(taskIds, action);
+      return { 
+        success: true, 
+        processed: taskIds.length, 
+        action: action === 'complete' ? 'completed' : 'deleted' 
+      };
     } catch (error) {
       throw new HttpException(
         `Batch operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

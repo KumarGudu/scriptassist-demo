@@ -1,80 +1,40 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable } from '@nestjs/common';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import * as bcrypt from 'bcrypt';
+import { IUserService } from './interfaces/user.service.interface';
+import { IUserRepository } from './interfaces/user.repository.interface';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements IUserService {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
+    private readonly userRepository: IUserRepository,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = this.usersRepository.create({
-      ...createUserDto,
-      password: hashedPassword,
-    });
-    return this.usersRepository.save(user);
+    return this.userRepository.create(createUserDto);
   }
 
   async findAll(options?: {
     page?: number;
     limit?: number;
   }): Promise<{ data: User[]; total: number; page?: number; totalPages?: number }> {
-    const queryBuilder = this.usersRepository.createQueryBuilder('user');
-
-    const total = await queryBuilder.getCount();
-
-    if (options?.page && options?.limit) {
-      const skip = (options.page - 1) * options.limit;
-      queryBuilder.skip(skip).take(options.limit);
-    }
-
-    const data = await queryBuilder.getMany();
-
-    return {
-      data,
-      total,
-      ...(options?.page && options?.limit && {
-        page: options.page,
-        totalPages: Math.ceil(total / options.limit),
-      }),
-    };
+    return this.userRepository.findAll(options);
   }
 
   async findOne(id: string): Promise<User> {
-    const user = await this.usersRepository.findOne({ where: { id } });
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
-    return user;
+    return this.userRepository.findOne(id);
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return this.userRepository.findByEmail(email);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    const user = await this.findOne(id);
-    
-    if (updateUserDto.password) {
-      updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
-    }
-    
-    this.usersRepository.merge(user, updateUserDto);
-    return this.usersRepository.save(user);
+    return this.userRepository.update(id, updateUserDto);
   }
 
   async remove(id: string): Promise<void> {
-    const result = await this.usersRepository.delete(id);
-    
-    if (result.affected === 0) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
+    return this.userRepository.remove(id);
   }
 } 
