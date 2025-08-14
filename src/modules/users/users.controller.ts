@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ClassSerializerInterceptor, UseInterceptors, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -19,8 +19,19 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  findAll(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const pageNum = page ? Math.max(1, page) : undefined;
+    const limitNum = limit ? Math.max(1, Math.min(100, limit)) : (pageNum ? 10 : undefined);
+
+    const options = {
+      ...(pageNum && { page: pageNum }),
+      ...(limitNum && { limit: limitNum }),
+    };
+
+    return this.usersService.findAll(Object.keys(options).length > 0 ? options : undefined);
   }
 
   @UseGuards(JwtAuthGuard)

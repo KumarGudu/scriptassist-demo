@@ -1,13 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, HttpException, HttpStatus, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, HttpException, HttpStatus } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Task } from './entities/task.entity';
 import { TaskStatus } from './enums/task-status.enum';
-import { TaskPriority } from './enums/task-priority.enum';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 
@@ -23,9 +19,6 @@ class JwtAuthGuard {}
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
-    // Anti-pattern: Controller directly accessing repository
-    @InjectRepository(Task)
-    private taskRepository: Repository<Task>
   ) {}
 
   @Post()
@@ -46,53 +39,23 @@ export class TasksController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    // Inefficient approach: Inconsistent pagination handling
-    if (page && !limit) {
-      limit = 10; // Default limit
-    }
-    
-    // Inefficient processing: Manual filtering instead of using repository
-    let tasks = await this.tasksService.findAll();
-    
-    // Inefficient filtering: In-memory filtering instead of database filtering
-    if (status) {
-      tasks = tasks.filter(task => task.status === status as TaskStatus);
-    }
-    
-    if (priority) {
-      tasks = tasks.filter(task => task.priority === priority as TaskPriority);
-    }
-    
-    // Inefficient pagination: In-memory pagination
-    if (page && limit) {
-      const startIndex = (page - 1) * limit;
-      const endIndex = page * limit;
-      tasks = tasks.slice(startIndex, endIndex);
-    }
-    
-    return {
-      data: tasks,
-      count: tasks.length,
-      // Missing metadata for proper pagination
+    const pageNum = page ? Math.max(1, page) : undefined;
+    const limitNum = limit ? Math.max(1, Math.min(100, limit)) : (pageNum ? 10 : undefined);
+
+    const options = {
+      ...(status && { status: status as TaskStatus }),
+      ...(priority && { priority }),
+      ...(pageNum && { page: pageNum }),
+      ...(limitNum && { limit: limitNum }),
     };
+
+    return this.tasksService.findAll(options);
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get task statistics' })
   async getStats() {
-    // Inefficient approach: N+1 query problem
-    const tasks = await this.taskRepository.find();
-    
-    // Inefficient computation: Should be done with SQL aggregation
-    const statistics = {
-      total: tasks.length,
-      completed: tasks.filter(t => t.status === TaskStatus.COMPLETED).length,
-      inProgress: tasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
-      pending: tasks.filter(t => t.status === TaskStatus.PENDING).length,
-      highPriority: tasks.filter(t => t.priority === TaskPriority.HIGH).length,
-    };
-    
-    return statistics;
+    return this.tasksService.getStatistics();
   }
 
   @Get(':id')
@@ -126,37 +89,30 @@ export class TasksController {
   @Post('batch')
   @ApiOperation({ summary: 'Batch process multiple tasks' })
   async batchProcess(@Body() operations: { tasks: string[], action: string }) {
-    // Inefficient batch processing: Sequential processing instead of bulk operations
     const { tasks: taskIds, action } = operations;
-    const results = [];
     
-    // N+1 query problem: Processing tasks one by one
-    for (const taskId of taskIds) {
-      try {
-        let result;
-        
-        switch (action) {
-          case 'complete':
-            result = await this.tasksService.update(taskId, { status: TaskStatus.COMPLETED });
-            break;
-          case 'delete':
-            result = await this.tasksService.remove(taskId);
-            break;
-          default:
-            throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
-        }
-        
-        results.push({ taskId, success: true, result });
-      } catch (error) {
-        // Inconsistent error handling
-        results.push({ 
-          taskId, 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
+    if (!taskIds || taskIds.length === 0) {
+      throw new HttpException('No task IDs provided', HttpStatus.BAD_REQUEST);
     }
-    
-    return results;
+
+    try {
+      switch (action) {
+        case 'complete':
+          await this.tasksService.bulkUpdate(taskIds, { status: TaskStatus.COMPLETED });
+          return { success: true, processed: taskIds.length, action: 'completed' };
+          
+        case 'delete':
+          await this.tasksService.bulkDelete(taskIds);
+          return { success: true, processed: taskIds.length, action: 'deleted' };
+          
+        default:
+          throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
+      }
+    } catch (error) {
+      throw new HttpException(
+        `Batch operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
   }
 } 

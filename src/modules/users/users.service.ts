@@ -22,8 +22,29 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find();
+  async findAll(options?: {
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: User[]; total: number; page?: number; totalPages?: number }> {
+    const queryBuilder = this.usersRepository.createQueryBuilder('user');
+
+    const total = await queryBuilder.getCount();
+
+    if (options?.page && options?.limit) {
+      const skip = (options.page - 1) * options.limit;
+      queryBuilder.skip(skip).take(options.limit);
+    }
+
+    const data = await queryBuilder.getMany();
+
+    return {
+      data,
+      total,
+      ...(options?.page && options?.limit && {
+        page: options.page,
+        totalPages: Math.ceil(total / options.limit),
+      }),
+    };
   }
 
   async findOne(id: string): Promise<User> {
@@ -50,7 +71,10 @@ export class UsersService {
   }
 
   async remove(id: string): Promise<void> {
-    const user = await this.findOne(id);
-    await this.usersRepository.remove(user);
+    const result = await this.usersRepository.delete(id);
+    
+    if (result.affected === 0) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
   }
 } 
